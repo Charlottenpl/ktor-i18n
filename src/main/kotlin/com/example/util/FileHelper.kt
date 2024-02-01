@@ -3,6 +3,7 @@ package com.example.util
 import com.example.bean.Language
 import com.example.common.Common
 import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -190,7 +191,7 @@ object ExcelHelper: FileOperationStrategy{
 
     override fun write(file: File, language: Language): File {
         //创建工作簿 + 工作表
-        val book: Workbook = Workbook()
+        val book: Workbook = XSSFWorkbook()
         val sheet: Sheet = book.createSheet("language")
 
         val languageName: String = language.language
