@@ -1,3 +1,11 @@
 package com.example.bean
 
-class Language(val language: String, val kv: Map<String, String>)
+data class Language(var language: String = "", var kv: Map<String, String> = mapOf()){
+
+    /**
+     * 合并kv
+     */
+    fun plus(lang: Language){
+        kv = kv + lang.kv
+    }
+}
