@@ -42,7 +42,6 @@ enum class FileType{
     excel
 }
 
-
 /**
  * 文件操作策略接口
  */
@@ -50,7 +49,6 @@ interface FileOperationStrategy {
     fun write(file: File, language: Language): File;
     fun read(file: File): Language;
 }
-
 
 object XmlFileHelper: FileOperationStrategy{
     private fun addNode(document: Document, root: Element, key: String, value: String){
@@ -129,7 +127,6 @@ object XmlFileHelper: FileOperationStrategy{
     }
 }
 
-
 object StringsFileHelper: FileOperationStrategy{
     override fun write(file: File, language: Language): File {
         TODO("Not yet implemented")
@@ -140,7 +137,6 @@ object StringsFileHelper: FileOperationStrategy{
     }
 
 }
-
 
 object ExcelHelper: FileOperationStrategy{
     //获取某一行
@@ -204,8 +200,8 @@ object ExcelHelper: FileOperationStrategy{
         //创建表格
         var index: Int = 1
         for((k,v) in language.kv){
-            sheet[0, index] = k
-            sheet[rowIndex, index] = v
+            sheet[index, 0] = k
+            sheet[index, rowIndex] = v
             index++
         }
 
