@@ -21,15 +21,13 @@ import javax.xml.transform.stream.StreamResult
 fun main() {
 
     //write
-    val zh : Map<String, String> = mapOf(
-        "XG_Public_OK" to "确定",
-        "XG_Public_Cancel" to "取消"
-        )
+    val zh : HashMap<String, String> = HashMap()
+    zh["XG_Public_OK"] = "确定"
+    zh["XG_Public_Cancel"] = "取消"
     var zh_language = Language(language = "zh", kv = zh)
-    val en : Map<String, String> = mapOf(
-        "XG_Public_OK" to "ok",
-        "XG_Public_Cancel" to "cancel"
-    )
+    val en : HashMap<String, String> = HashMap()
+    en["XG_Public_OK"] = "ok"
+    en["XG_Public_Cancel"] = "cancel"
     var en_language = Language(language = "en", kv = en)
 //    XmlFileHelper.write(File("${Common.path}values-${language.language}/string.xml"), language)
 
@@ -38,7 +36,13 @@ fun main() {
 
 
     //excel write
-    ExcelHelper.write(File("${Common.path}i18n.xlsx"), en_language)
+//    ExcelHelper.write(File("${Common.path}i18n.xlsx"), listOf(en_language, zh_language))
+
+    val list = ExcelHelper.read(File("${Common.path}i18n.xlsx"))
+
+    for (lang in list){
+        println(lang.toString())
+    }
 
 }
 
@@ -52,8 +56,8 @@ enum class FileType{
  * 文件操作策略接口
  */
 interface FileOperationStrategy {
-    fun write(file: File, language: Language): File;
-    fun read(file: File): Language;
+    fun write(file: File, language: List<Language>): File;
+    fun read(file: File): List<Language>;
 }
 
 object XmlFileHelper: FileOperationStrategy{
@@ -64,81 +68,126 @@ object XmlFileHelper: FileOperationStrategy{
         node.textContent = value
         root.appendChild(node)
     }
-    override fun write(file: File, language: Language): File {
+
+    private fun getXMLList(directory: File):List<File>{
+        // 确保目标文件夹存在
+        if (!directory.exists() || !directory.isDirectory) {
+            throw IllegalArgumentException("Invalid directory: ${directory.path}")
+        }
+
+        // 获取所有符合 "value-xxx" 格式的文件夹
+        val xmlFiles = directory.listFiles { file ->
+            file.isDirectory && file.name.startsWith("value-")
+        }
+
+        if (xmlFiles != null && xmlFiles.isNotEmpty()) {
+            return xmlFiles.asList()
+        } else {
+            throw NoSuchElementException("No matching directories found.")
+        }
+    }
+
+    override fun write(file: File, language: List<Language>): File {
         //将language中存储的信息写入file，并返回一个File
 
-        // 如果文件不存在，则创建新文件
-        if (!file.parentFile.exists()){
-            file.parentFile.mkdirs()
-        }
-        if (!file.exists()) {
-            file.createNewFile()
+        // 创建父文件夹
+        if (!file.exists()){
+            file.mkdirs()
         }
 
-        // 创建XML文档
-        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+        // 循环language
+        for (lang in language){
+            // directory_name
+            val directory = File(file, "value-${lang.language}")
+            if (!directory.exists()){
+                directory.mkdirs()
+            }
 
-        // 创建根节点
-        val rootElement: Element = document.createElement("resources")
-        document.appendChild(rootElement)
+            // create xml
+            val xmlFile = File(directory, "string.xml")
+            if (!xmlFile.exists()){
+                xmlFile.createNewFile()
+            }
 
-        // 创建string节点
-        for ((k, v) in language.kv?: mapOf()){
-            addNode(document, rootElement, k, v)
+            // ----------------------------------------------------------
+            // 创建XML文档
+            val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+
+            // 创建根节点
+            val rootElement: Element = document.createElement("resources")
+            document.appendChild(rootElement)
+
+            // 创建string节点
+            for ((k, v) in lang.kv?: mapOf()){
+                addNode(document, rootElement, k, v)
+            }
+
+            // 将文档写入文件
+            val transformer = newInstance().newTransformer()
+            transformer.transform(DOMSource(document), StreamResult(FileWriter(xmlFile)))
         }
-
-        // 将文档写入文件
-        val transformer = newInstance().newTransformer()
-        transformer.transform(DOMSource(document), StreamResult(FileWriter(file)))
-
 
         return file
     }
-    override fun read(file: File): Language {
-        val documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-        val document: Document = documentBuilder.parse(file)
-        document.documentElement.normalize()
+    override fun read(file: File): List<Language> {
+        // 获取父目录下所有符合格式的文件夹
+        val xmlFiles = getXMLList(file)
+        val array: MutableList<Language> = mutableListOf() //result
 
-        // 获取根节点
-        val rootElement: Element = document.documentElement
+        for (xmlFile in xmlFiles){
 
-        // 获取所有名为 "string" 的节点
-        val nodeList: NodeList = rootElement.getElementsByTagName("string")
-
-        val language: Language = Language()
-        val parentFile = file.parentFile.nameWithoutExtension
-        language.language = parentFile.substringAfterLast("values-")
-
-
-        //获取map
-        val kv : MutableMap<String, String> = mutableMapOf()
-        for (i in 0 until nodeList.length) {
-            val node: Node = nodeList.item(i)
-
-            // 判断节点是否为 Element 类型
-            if (node.nodeType == Node.ELEMENT_NODE) {
-                val element = node as Element
-                val key: String = element.getAttribute("name")
-                val value = element.textContent
-
-                if (key.isNotBlank())
-                    kv[key] = value
+            //获取string.xml文件
+            val xml = File(xmlFile, "string.xml")
+            if (!xml.exists()){
+                continue
             }
+
+            val documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            val document: Document = documentBuilder.parse(file)
+            document.documentElement.normalize()
+
+            // 获取根节点
+            val rootElement: Element = document.documentElement
+
+            // 获取所有名为 "string" 的节点
+            val nodeList: NodeList = rootElement.getElementsByTagName("string")
+
+            val language = Language()
+            language.language = xmlFile.nameWithoutExtension.substringAfterLast("values-")
+
+
+            //获取map
+            val kv : HashMap<String, String> = HashMap()
+            for (i in 0 until nodeList.length) {
+                val node: Node = nodeList.item(i)
+
+                // 判断节点是否为 Element 类型
+                if (node.nodeType == Node.ELEMENT_NODE) {
+                    val element = node as Element
+                    val key: String = element.getAttribute("name")
+                    val value = element.textContent
+
+                    if (key.isNotBlank())
+                        kv[key] = value
+                }
+            }
+
+            language.kv = kv
+
+            // 如果未找到匹配的节点，则返回空字符串
+            array.add(language)
         }
 
-        language.kv = kv
-
-        // 如果未找到匹配的节点，则返回空字符串
-        return language
+        return array
     }
 }
 
 object StringsFileHelper: FileOperationStrategy{
-    override fun write(file: File, language: Language): File {
+    override fun write(file: File, language: List<Language>): File {
         TODO("Not yet implemented")
     }
 
-    override fun read(file: File): Language {
+    override fun read(file: File): List<Language> {
         TODO("Not yet implemented")
     }
 
@@ -229,7 +278,6 @@ object ExcelHelper: FileOperationStrategy{
         this[x, ++cellNumber] = value
         return cellNumber
     }  //获取sheet中第x列值为value的行数，如果没有则新建
-
     operator fun Sheet.get(value: String, y: Int): Int{
         println("Sheet.get $y, $value")
         val row: Row = this[y]
@@ -249,7 +297,9 @@ object ExcelHelper: FileOperationStrategy{
         row[row.lastCellNum+1].setCellValue(value)
         return row.lastCellNum.toInt()
     }  //获取sheet中第x列值为value的行数，如果没有则新建
-    override fun write(file: File, language: Language): File {
+
+
+    override fun write(file: File, language: List<Language>): File {
         //创建工作簿 + 工作表
         val book: Workbook = if (file.exists()){
             XSSFWorkbook(FileInputStream(file.path))
@@ -258,17 +308,18 @@ object ExcelHelper: FileOperationStrategy{
         }
 
         val sheet: Sheet = book.getSheet("language") ?:book.createSheet("language")
-
-        val languageName: String = language.language
-        val row:Row = sheet[0]
-        val xIndex = row[languageName]
-
         sheet[0,0] = "key"
 
-        //创建表格
-        for((k,v) in language.kv){
-            //确定key的行数
-            sheet[xIndex, sheet[0, k]] = v
+        for (lang in language){
+            val languageName: String = lang.language
+            val row:Row = sheet[0]
+            val xIndex = row[languageName]
+
+            //更新表格
+            for((k,v) in lang.kv){
+                //确定key的行数
+                sheet[xIndex, sheet[0, k]] = v
+            }
         }
 
         // 保存修改后的 Excel 文件
@@ -284,8 +335,54 @@ object ExcelHelper: FileOperationStrategy{
         return file
     }
 
-    override fun read(file: File): Language {
-        TODO("Not yet implemented")
+    override fun read(file: File): List<Language> {
+        //打开excel
+        if (!file.exists()){
+            throw NoSuchElementException("No such file found.")
+        }
+
+        val book: Workbook = XSSFWorkbook(FileInputStream(file.path))
+        val sheet: Sheet = book.getSheet("language") ?:book.createSheet("language")
+
+        //读取language - zh
+        val list: ArrayList<Language> = ArrayList()
+
+        // 判断sheet是否为空
+        val rowNum = sheet.physicalNumberOfRows
+        val cellNum = if (rowNum > 0) sheet.getRow(0).physicalNumberOfCells else 0
+
+        if (rowNum < 2 && cellNum < 2)
+            return list
+
+        for (i in 0 until sheet.lastRowNum + 1){
+            //写入language
+            if (i == 0){
+                for (cell in sheet[0]){
+                    if (cell.columnIndex == 0)
+                        continue
+
+                    val language = Language()
+                    language.language = cell.stringCellValue
+                    language.kv = HashMap()
+                    list[cell.columnIndex] = language
+                }
+                continue
+            }
+
+
+            //写入kv
+            val key = sheet[i][0].stringCellValue
+            val row = sheet[i]
+            for (j in 0 until row.lastCellNum +1){
+                if (j == 0){
+                    continue
+                }
+
+                val value = row[j].stringCellValue
+                list[j].kv[key] = value
+            }
+        }
+        return list
     }
 
 }
