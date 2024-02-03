@@ -9,6 +9,7 @@ import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.FileWriter
 import javax.xml.parsers.DocumentBuilderFactory
@@ -20,11 +21,16 @@ import javax.xml.transform.stream.StreamResult
 fun main() {
 
     //write
-    val kv : Map<String, String> = mapOf(
+    val zh : Map<String, String> = mapOf(
         "XG_Public_OK" to "确定",
         "XG_Public_Cancel" to "取消"
         )
-    var language = Language(language = "zh", kv = kv)
+    var zh_language = Language(language = "zh", kv = zh)
+    val en : Map<String, String> = mapOf(
+        "XG_Public_OK" to "ok",
+        "XG_Public_Cancel" to "cancel"
+    )
+    var en_language = Language(language = "en", kv = en)
 //    XmlFileHelper.write(File("${Common.path}values-${language.language}/string.xml"), language)
 
     //read
@@ -32,7 +38,7 @@ fun main() {
 
 
     //excel write
-    ExcelHelper.write(File("${Common.path}i18n.xlsx"), language)
+    ExcelHelper.write(File("${Common.path}i18n.xlsx"), en_language)
 
 }
 
@@ -138,21 +144,42 @@ object StringsFileHelper: FileOperationStrategy{
 
 }
 
+
+
+
+
+
+
+
+
+
 object ExcelHelper: FileOperationStrategy{
-    //获取某一行
-    operator fun Sheet.get(n: Int): Row = this.getRow(n) ?: this.createRow(n)
-    operator fun Row.get(n: Int): Cell = this.getCell(n) ?: this.createCell(n, CellType.BLANK)
+
+    operator fun Sheet.get(n: Int): Row{
+        println("sheet.get $n")
+        return this.getRow(n) ?: this.createRow(n)
+    } //获取第n行，如果没有则新建
+    operator fun Row.get(n: Int): Cell{
+        println("Row.get $n")
+        return this.getCell(n) ?: this.createCell(n, CellType.BLANK)
+    } //获取某一行第n个cell，如果没有则新建
+    operator fun Sheet.get(x: Int, y: Int): Cell {
+        println("sheet.get($x , $y)")
+        val row = this[y]
+        val cell = row[x]
+        return cell
+    }  //获取表中坐标为（x，y）的cell的值  ---重写
     operator fun Row.get(v: Any): Int{
-        val cellIterator: Iterator<Cell> = this.cellIterator()
+        println("Row.get $v")
         var index = 0
 
-        while (cellIterator.hasNext()) {
-            val cell: Cell = cellIterator.next()
-            index = cell.rowIndex
+        for (i in 0 until  this.lastCellNum){
+            index = i
+            val cell = this.getCell(i)
             // 获取单元格的值并与目标值比较
             val cellValue: String = cell.stringCellValue
             if (cellValue == v) {
-                return cell.rowIndex
+                return cell.columnIndex
             }
         }
 
@@ -166,9 +193,9 @@ object ExcelHelper: FileOperationStrategy{
             else -> throw IllegalArgumentException("数据类型不支持")
         }
         return index
-    }
-    operator fun Sheet.get(x: Int, y: Int): Cell = this[x][y]
+    }  //获取某一行值为v的cell的index，如果没有则新建
     operator fun Sheet.set(x: Int, y: Int, value: Any?){
+        println("Sheet.set $x, $y, $value")
         value?.let {
             // 所有的字段都设置成文本字段
             val textStyle = this.workbook.createCellStyle()
@@ -183,32 +210,72 @@ object ExcelHelper: FileOperationStrategy{
                 else -> throw IllegalArgumentException("数据类型不支持")
             }
         }
-    }
+    } //设置表中坐标为（x，y）的cell的值为value
+    operator fun Sheet.get(x: Int, value: String): Int{
+        println("Sheet.get $x, $value")
+        var cellNumber: Int = this.lastRowNum //这里返回的是下标。。
+        for (i in 0 until cellNumber + 1){
+            val cv:String = this[x,i].stringCellValue
+            if (cv == value){
+                return i
+            }
 
+            if (cv.isEmpty()){
+                this[x, i] = value
+                return i
+            }
+        }
+
+        this[x, ++cellNumber] = value
+        return cellNumber
+    }  //获取sheet中第x列值为value的行数，如果没有则新建
+
+    operator fun Sheet.get(value: String, y: Int): Int{
+        println("Sheet.get $y, $value")
+        val row: Row = this[y]
+
+        for (i in 0 until row.lastCellNum){
+            val cv:String = row[i].stringCellValue
+            if (cv == value){
+                return i
+            }
+
+            if (cv.isEmpty()){
+                row[i].setCellValue(value)
+                return i
+            }
+        }
+
+        row[row.lastCellNum+1].setCellValue(value)
+        return row.lastCellNum.toInt()
+    }  //获取sheet中第x列值为value的行数，如果没有则新建
     override fun write(file: File, language: Language): File {
         //创建工作簿 + 工作表
-        val book: Workbook = XSSFWorkbook()
-        val sheet: Sheet = book.createSheet("language")
+        val book: Workbook = if (file.exists()){
+            XSSFWorkbook(FileInputStream(file.path))
+        }else {
+            XSSFWorkbook()
+        }
+
+        val sheet: Sheet = book.getSheet("language") ?:book.createSheet("language")
 
         val languageName: String = language.language
         val row:Row = sheet[0]
-        val rowIndex = row[languageName]
+        val xIndex = row[languageName]
 
         sheet[0,0] = "key"
 
-
         //创建表格
-        var index: Int = 1
         for((k,v) in language.kv){
-            sheet[index, 0] = k
-            sheet[index, rowIndex] = v
-            index++
+            //确定key的行数
+            sheet[xIndex, sheet[0, k]] = v
         }
 
-        // 保存到文件
-        val fileOut = FileOutputStream(file.absolutePath, false)
-        book.write(fileOut)
-        fileOut.close()
+        // 保存修改后的 Excel 文件
+        val outputStream = FileOutputStream(file)
+        book.write(outputStream)
+        outputStream.flush()
+        outputStream.close()
 
         // 关闭工作簿
         book.close()
