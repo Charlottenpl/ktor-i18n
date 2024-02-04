@@ -2,13 +2,13 @@ package com.example.util
 
 import com.example.bean.Language
 import com.example.common.Common
-import org.apache.commons.codec.language.bm.Lang
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
+import java.io.BufferedWriter
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -20,6 +20,10 @@ import javax.xml.transform.stream.StreamResult
 
 
 fun main() {
+
+    val xmlPath = "${Common.path}android/"
+    val stringsPath = "${Common.path}ios/"
+    val excelPath = "${Common.path}excel/"
 
     //write
     val zh : HashMap<String, String> = HashMap()
@@ -37,11 +41,17 @@ fun main() {
 
 
     //excel write
-//    ExcelHelper.write(File("${Common.path}i18n.xlsx"), listOf(en_language, zh_language))
+//    ExcelHelper.write(File("${excelPath}i18n.xlsx"), listOf(en_language, zh_language))
 
-    val list = ExcelHelper.read(File("${Common.path}i18n.xlsx"))
-    XmlFileHelper.write(File(Common.path), list)
+//    val list = ExcelHelper.read(File("${excelPath}i18n.xlsx"))
+//    XmlFileHelper.write(File(xmlPath), list)
+//    StringsFileHelper.write(File(stringsPath), list)
 
+    val list = StringsFileHelper.read(File(stringsPath))
+    println(list.toString())
+
+    val regex = Regex(".*\\.lproj$")
+    val files = regex.matches("en.lproj")
 
 }
 
@@ -68,24 +78,6 @@ object XmlFileHelper: FileOperationStrategy{
         root.appendChild(node)
     }
 
-    private fun getXMLList(directory: File):List<File>{
-        // 确保目标文件夹存在
-        if (!directory.exists() || !directory.isDirectory) {
-            throw IllegalArgumentException("Invalid directory: ${directory.path}")
-        }
-
-        // 获取所有符合 "value-xxx" 格式的文件夹
-        val xmlFiles = directory.listFiles { file ->
-            file.isDirectory && file.name.startsWith("value-")
-        }
-
-        if (xmlFiles != null && xmlFiles.isNotEmpty()) {
-            return xmlFiles.asList()
-        } else {
-            throw NoSuchElementException("No matching directories found.")
-        }
-    }
-
     override fun write(file: File, language: List<Language>): File {
         //将language中存储的信息写入file，并返回一个File
 
@@ -96,8 +88,9 @@ object XmlFileHelper: FileOperationStrategy{
 
         // 循环language
         for (lang in language){
+            print("写入 ${lang.language}...")
             // directory_name
-            val directory = File(file, "value-${lang.language}")
+            val directory = File(file, "values-${lang.language}")
             if (!directory.exists()){
                 directory.mkdirs()
             }
@@ -124,13 +117,15 @@ object XmlFileHelper: FileOperationStrategy{
             // 将文档写入文件
             val transformer = newInstance().newTransformer()
             transformer.transform(DOMSource(document), StreamResult(FileWriter(xmlFile)))
+
+            print(" ✅ \n")
         }
 
         return file
     }
     override fun read(file: File): List<Language> {
         // 获取父目录下所有符合格式的文件夹
-        val xmlFiles = getXMLList(file)
+        val xmlFiles = getChildList(file, "^values-")
         val array: MutableList<Language> = mutableListOf() //result
 
         for (xmlFile in xmlFiles){
@@ -183,11 +178,114 @@ object XmlFileHelper: FileOperationStrategy{
 
 object StringsFileHelper: FileOperationStrategy{
     override fun write(file: File, language: List<Language>): File {
-        TODO("Not yet implemented")
+        /**
+         * 判断父目录是否存在
+         *
+         * 遍历Language列表
+         *
+         * - for lang in language
+         *      - 添加 xx.lproj 目录
+         *      - 添加 Localizable.strings 文件
+         *      - 读取 lang 并写入kv
+         *      - 覆盖保存文件，输出结果
+         *
+         */
+
+        // 创建父文件夹
+        if (!file.exists()){
+            file.mkdirs()
+        }
+
+        for (lang in language){
+            // directory_name
+            val directory = File(file, "${lang.language}.lproj")
+            if (!directory.exists()){
+                directory.mkdirs()
+            }
+
+            // create xml
+            val stringsFile = File(directory, "Localizable.strings")
+            if (!stringsFile.exists()){
+                stringsFile.createNewFile()
+            }
+
+            // 写入 kv
+            print("写入 ${lang.language}...")
+
+            BufferedWriter(FileWriter(stringsFile, false)).use { writer -> //添加 false 表示清空文件内容
+                for ((key, value) in lang.kv){
+                    val context = "\"$key\" = \"$value\";\n"
+                    writer.write(context)
+
+                }
+            }
+
+            print(" ✅ \n")
+
+        }
+
+        //返回文件
+        return file
     }
 
     override fun read(file: File): List<Language> {
-        TODO("Not yet implemented")
+        /**
+         * 判断父目录是否存在，获取目录下各个strings文件
+         *  - base
+         *      - xx.lproj
+         *          - Localizable.strings
+         *
+         * 返回一个文件列表
+         */
+
+        /**
+         * 遍历文件列表
+         *  - for file in list
+         *      - 读取文件名称，提取语言
+         *      - 读取文件并提取kv
+         *      - 输出读取结果
+         */
+
+        if (!file.exists()){
+            throw NoSuchElementException("${file.path} not found.")
+        }
+
+        val files = getChildList(file, ".*\\.lproj\$")
+        val array: MutableList<Language> = mutableListOf() //result
+
+        for (stringFile in files){
+            val f = File(stringFile, "Localizable.strings")
+            val language = Language()
+            language.language = stringFile.nameWithoutExtension.substringBeforeLast(".lproj")
+
+            println("读取 ${language.language}... ")
+            val content: String = f.readText()
+
+            content.lines().forEach{line ->
+                val commentRegex = Regex("^\\s*[/*].*")
+                if (commentRegex.matches(line)){
+                    return@forEach
+                }
+
+                val regex = Regex("\"([^\"]*)\"\\s*=\\s*\"([^\"]*)\"")
+
+                val matchResult = regex.find(line)
+                if (matchResult != null) {
+                    val (key, value) = matchResult.destructured
+                    language.kv[key] = value
+                } else {
+                    println("No match found $line")
+                }
+            }
+
+            array.add(language)
+
+        }
+
+        println("读取完成。")
+
+        // 返回Language列表
+        return array
     }
 
 }
@@ -301,21 +399,21 @@ object ExcelHelper: FileOperationStrategy{
 
 
 operator fun Sheet.get(n: Int): Row{
-    println("sheet.get $n")
+//    println("sheet.get $n")
     return this.getRow(n) ?: this.createRow(n)
 } //获取第n行，如果没有则新建
 operator fun Row.get(n: Int): Cell{
-    println("Row.get $n")
+//    println("Row.get $n")
     return this.getCell(n) ?: this.createCell(n, CellType.BLANK)
 } //获取某一行第n个cell，如果没有则新建
 operator fun Sheet.get(x: Int, y: Int): Cell {
-    println("sheet.get($x , $y)")
+//    println("sheet.get($x , $y)")
     val row = this[y]
     val cell = row[x]
     return cell
 }  //获取表中坐标为（x，y）的cell的值  ---重写
 operator fun Row.get(v: Any): Int{
-    println("Row.get $v")
+//    println("Row.get $v")
     var index = 0
 
     for (i in 0 until  this.lastCellNum){
@@ -340,7 +438,7 @@ operator fun Row.get(v: Any): Int{
     return index
 }  //获取某一行值为v的cell的index，如果没有则新建
 operator fun Sheet.set(x: Int, y: Int, value: Any?){
-    println("Sheet.set $x, $y, $value")
+//    println("Sheet.set $x, $y, $value")
     value?.let {
         // 所有的字段都设置成文本字段
         val textStyle = this.workbook.createCellStyle()
@@ -357,7 +455,7 @@ operator fun Sheet.set(x: Int, y: Int, value: Any?){
     }
 } //设置表中坐标为（x，y）的cell的值为value
 operator fun Sheet.get(x: Int, value: String): Int{
-    println("Sheet.get $x, $value")
+//    println("Sheet.get $x, $value")
     var cellNumber: Int = this.lastRowNum //这里返回的是下标。。
     for (i in 0 until cellNumber + 1){
         val cv:String = this[x,i].stringCellValue
@@ -375,7 +473,7 @@ operator fun Sheet.get(x: Int, value: String): Int{
     return cellNumber
 }  //获取sheet中第x列值为value的行数，如果没有则新建
 operator fun Sheet.get(value: String, y: Int): Int{
-    println("Sheet.get $y, $value")
+//    println("Sheet.get $y, $value")
     val row: Row = this[y]
 
     for (i in 0 until row.lastCellNum){
@@ -393,6 +491,25 @@ operator fun Sheet.get(value: String, y: Int): Int{
     row[row.lastCellNum+1].setCellValue(value)
     return row.lastCellNum.toInt()
 }  //获取sheet中第x列值为value的行数，如果
+
+fun getChildList(directory: File, match: String):List<File>{
+    // 确保目标文件夹存在
+    if (!directory.exists() || !directory.isDirectory) {
+        throw IllegalArgumentException("Invalid directory: ${directory.path}")
+    }
+
+    // 获取所有符合 "values-xxx" 格式的文件夹
+    val regex = Regex(match)
+    val files = directory.listFiles { file ->
+        regex.matches(file.name).and(file.isDirectory)
+    }
+
+    if (files != null && files.isNotEmpty()) {
+        return files.asList()
+    } else {
+        throw NoSuchElementException("No matching directories found.")
+    }
+}
 
 //operator fun List<Language>.set(index: Int, value: Language){
 //    if (this.get(index))
