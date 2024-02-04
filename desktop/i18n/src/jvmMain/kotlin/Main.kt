@@ -26,49 +26,75 @@ fun App() {
     var readType by remember { mutableStateOf(1) }
     var writeType by remember { mutableStateOf(2) }
     var isCheck by remember { mutableStateOf(true) }
+    var page by remember { mutableStateOf(1) }
 
     MaterialTheme {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ){
-            Row {
-                Button(onClick = {
+        when(page){
+            1->
+                selectBase(page){
+                    page = 2
+                }
+            2->
+                lang()
+
+        }
+    }
+}
+
+
+@Composable
+fun selectBase(page: Int, onButtonClick: () -> Unit){
+    var text by remember { mutableStateOf("📁") }
+    var base by remember { mutableStateOf("") }
+    var checkText by remember { mutableStateOf("Hello, World!") }
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ){
+        Row() {
+            TextField(
+                value = base,
+                onValueChange = {
+                    checkText = "🥳"
+                    base = it
+                },
+                label = { Text("请选择父目录地址") },
+                modifier = Modifier.padding().height(IntrinsicSize.Min)
+            )
+            Button(onClick = {
+                if (base.isEmpty()){
+                    //重新选择
                     val fileChooser = JFileChooser(FileSystemView.getFileSystemView().homeDirectory)
                     fileChooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
                     val result = fileChooser.showOpenDialog(null)
 
                     base = if (result == JFileChooser.APPROVE_OPTION) {
-                        fileChooser.selectedFile.path
+                        "${fileChooser.selectedFile.path}/"
                     } else {
                         ""
                     }
-                }) {
-                    Text("pick file...")
                 }
-            }
-            Row() {
-                TextField(
-                    value = base,
-                    onValueChange = {
-                        checkText = "🥳"
-                        base = it
-                    },
-                    label = { Text("请选择父目录地址") },
-                    modifier = Modifier.padding()
-                )
-//                Text(checkText)
-            }
 
-            Button(onClick = {
-                text = "Hello, Desktop!"
-            }) {
+                if (base.isNotEmpty()){
+                    Common.path = base
+                    onButtonClick()
+                }
+
+            },
+                modifier = Modifier.height(IntrinsicSize.Min)
+            ) {
                 Text(text)
             }
         }
-
     }
+
+}
+
+
+@Composable
+fun lang(){
+    Text(Common.path)
 }
 
 fun main() = application {
